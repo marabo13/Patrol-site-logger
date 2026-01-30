@@ -9,24 +9,15 @@ exports.handler = async (event) => {
   }
 
   let body = {};
-  try { body = JSON.parse(event.body || "{}"); }
-  catch { return { statusCode: 400, body: JSON.stringify({ error: "Bad JSON" }) }; }
+  try { body = JSON.parse(event.body || "{}"); } catch {}
 
-  const username = String(body.username || "").trim();
-  const rank = String(body.rank || "").trim();
   const action = String(body.action || "Start Patrol");
   const time = String(body.time || new Date().toISOString());
 
-  if (!username || !rank) {
-    return { statusCode: 400, body: JSON.stringify({ error: "Missing username or rank" }) };
-  }
-
   const content =
 `🛡️ **Patrol Log**
-**Action:** ${action}
-**User:** ${username}
-**Rank:** ${rank}
-**Time:** ${time}`;
+✅ **${action}**
+🕒 **Time:** ${time}`;
 
   const resp = await fetch(WEBHOOK_URL, {
     method: "POST",
