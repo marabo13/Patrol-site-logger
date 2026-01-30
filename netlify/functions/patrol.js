@@ -12,12 +12,23 @@ exports.handler = async (event) => {
   try { body = JSON.parse(event.body || "{}"); } catch {}
 
   const action = String(body.action || "Patrol");
-  const time = String(body.time || new Date().toISOString());
+  const startISO = body.startISO ? String(body.startISO) : "";
+  const endISO = body.endISO ? String(body.endISO) : "";
+  const durationText = body.durationText ? String(body.durationText) : "";
 
-  const content =
-`🛡️ **PATROL LOG**
-${action === "Start Patrol" ? "🟢" : "🔴"} **${action.toUpperCase()}**
-🕒 **Time:** ${time}`;
+  let content = `🛡️ **PATROL LOG**\n`;
+
+  if (action === "Start Patrol") {
+    content += `🟢 **START PATROL**\n`;
+    if (startISO) content += `🕒 **Start:** ${startISO}\n`;
+  } else if (action === "End Patrol") {
+    content += `🔴 **END PATROL**\n`;
+    if (startISO) content += `🕒 **Start:** ${startISO}\n`;
+    if (endISO) content += `🕒 **End:** ${endISO}\n`;
+    if (durationText) content += `⏱️ **Duration:** ${durationText}\n`;
+  } else {
+    content += `**Action:** ${action}\n`;
+  }
 
   const resp = await fetch(WEBHOOK_URL, {
     method: "POST",
