@@ -1,72 +1,53 @@
 exports.handler = async (event) => {
   if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: JSON.stringify({ error: "Method not allowed" }) };
+    return { statusCode: 405, body: "Method not allowed" };
   }
 
   const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
   if (!WEBHOOK_URL) {
-    return { statusCode: 500, body: JSON.stringify({ error: "Missing DISCORD_WEBHOOK_URL env var" }) };
+    return { statusCode: 500, body: "Missing webhook" };
   }
 
-  let body = {};
-  try { body = JSON.parse(event.body || "{}"); } catch {}
+  let body={}; try{body=JSON.parse(event.body||"{}")}catch{}
 
-  const action = String(body.action || "Patrol");
-  const startISO = body.startISO ? String(body.startISO) : "";
-  const endISO = body.endISO ? String(body.endISO) : "";
-  const durationText = body.durationText ? String(body.durationText) : "";
-  const nowISO = String(body.time || new Date().toISOString());
+  const {
+    action, username, rank, mentor,
+    startISO, endISO, time
+  } = body;
 
-  // ✅ OPTIONAL: set these to whatever you want
-  const EMBED_AUTHOR_NAME = "Patrol System";
-  const EMBED_FOOTER_TEXT = "Auto patrol logger";
+  const fields = [
+    { name:"Officer", value:`**${username}**`, inline:true },
+    { name:"Rank", value:`**${rank}**`, inline:true }
+  ];
 
-  // Discord embed colors (decimal)
-  const GREEN = 0x2ecc71;
-  const RED = 0xe74c3c;
-  const PURPLE = 0xa66bff;
+  if(rank === "Arbiter" && mentor){
+    fields.push({
+      name:"Supervised by",
+      value:`**Quaestor ${mentor}**`,
+      inline:false
+    });
+  }
 
-  const isStart = action === "Start Patrol";
-  const isEnd = action === "End Patrol";
-
-  const title = isStart ? "🟢 Patrol Started" : isEnd ? "🔴 Patrol Ended" : "🛡️ Patrol Update";
-  const color = isStart ? GREEN : isEnd ? RED : PURPLE;
-
-  const fields = [];
-
-  if (startISO) fields.push({ name: "Start", value: `\`${startISO}\``, inline: false });
-  if (endISO) fields.push({ name: "End", value: `\`${endISO}\``, inline: false });
-  if (durationText) fields.push({ name: "Duration", value: `**${durationText}**`, inline: false });
-
-  // If you want the raw action shown even for start/end:
-  fields.push({ name: "Action", value: `**${action}**`, inline: true });
+  if(startISO) fields.push({ name:"Start", value:`\`${startISO}\``, inline:false });
+  if(endISO) fields.push({ name:"End", value:`\`${endISO}\``, inline:false });
 
   const embed = {
-    author: { name: EMBED_AUTHOR_NAME },
-    title,
-    color,
+    title: action === "Start Patrol" ? "🟢 Patrol Started" : "🔴 Patrol Ended",
+    color: action === "Start Patrol" ? 0x2ecc71 : 0xe74c3c,
     fields,
-    timestamp: nowISO,
-    footer: { text: EMBED_FOOTER_TEXT },
+    timestamp: time || new Date().toISOString(),
+    footer:{ text:"DCoJ Patrol Logger" }
   };
 
-  const payload = {
-    // You can also set webhook username/icon here if you want:
-    // username: "Patrol Logger",
-    // avatar_url: "https://.../image.png",
-    embeds: [embed],
-  };
-
-  const resp = await fetch(WEBHOOK_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+  const resp = await fetch(WEBHOOK_URL,{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({embeds:[embed]})
   });
 
-  if (!resp.ok) {
-    const details = await resp.text().catch(() => "");
-    return { statusCode: 500, body: JSON.stringify({ error: "Discord webhook failed", details }) };
+  if(!resp.ok){
+    return { statusCode:500, body:"Discord webhook failed" };
   }
 
-  return { statusCode: 200, body: JSON.stringify({ ok: true }) };
+  return { statusCode:200, body:"OK" };
 };
