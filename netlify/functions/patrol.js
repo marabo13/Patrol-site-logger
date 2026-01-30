@@ -15,25 +15,52 @@ exports.handler = async (event) => {
   const startISO = body.startISO ? String(body.startISO) : "";
   const endISO = body.endISO ? String(body.endISO) : "";
   const durationText = body.durationText ? String(body.durationText) : "";
+  const nowISO = String(body.time || new Date().toISOString());
 
-  let content = `🛡️ **PATROL LOG**\n`;
+  // ✅ OPTIONAL: set these to whatever you want
+  const EMBED_AUTHOR_NAME = "Patrol System";
+  const EMBED_FOOTER_TEXT = "Auto patrol logger";
 
-  if (action === "Start Patrol") {
-    content += `🟢 **START PATROL**\n`;
-    if (startISO) content += `🕒 **Start:** ${startISO}\n`;
-  } else if (action === "End Patrol") {
-    content += `🔴 **END PATROL**\n`;
-    if (startISO) content += `🕒 **Start:** ${startISO}\n`;
-    if (endISO) content += `🕒 **End:** ${endISO}\n`;
-    if (durationText) content += `⏱️ **Duration:** ${durationText}\n`;
-  } else {
-    content += `**Action:** ${action}\n`;
-  }
+  // Discord embed colors (decimal)
+  const GREEN = 0x2ecc71;
+  const RED = 0xe74c3c;
+  const PURPLE = 0xa66bff;
+
+  const isStart = action === "Start Patrol";
+  const isEnd = action === "End Patrol";
+
+  const title = isStart ? "🟢 Patrol Started" : isEnd ? "🔴 Patrol Ended" : "🛡️ Patrol Update";
+  const color = isStart ? GREEN : isEnd ? RED : PURPLE;
+
+  const fields = [];
+
+  if (startISO) fields.push({ name: "Start", value: `\`${startISO}\``, inline: false });
+  if (endISO) fields.push({ name: "End", value: `\`${endISO}\``, inline: false });
+  if (durationText) fields.push({ name: "Duration", value: `**${durationText}**`, inline: false });
+
+  // If you want the raw action shown even for start/end:
+  fields.push({ name: "Action", value: `**${action}**`, inline: true });
+
+  const embed = {
+    author: { name: EMBED_AUTHOR_NAME },
+    title,
+    color,
+    fields,
+    timestamp: nowISO,
+    footer: { text: EMBED_FOOTER_TEXT },
+  };
+
+  const payload = {
+    // You can also set webhook username/icon here if you want:
+    // username: "Patrol Logger",
+    // avatar_url: "https://.../image.png",
+    embeds: [embed],
+  };
 
   const resp = await fetch(WEBHOOK_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content })
+    body: JSON.stringify(payload),
   });
 
   if (!resp.ok) {
