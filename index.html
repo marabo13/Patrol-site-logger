@@ -1,211 +1,197 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Patrol Control</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patrol Logger</title>
 
-  <style>
-    body{
-      margin:0;
-      font-family:system-ui;
-      background:#0b0214;
-      color:#f7f2ff;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      height:100vh;
-    }
-    .panel{
-      width:100%;
-      max-width:440px;
-      padding:24px;
-      border-radius:18px;
-      border:1px solid rgba(255,255,255,.15);
-      background:rgba(255,255,255,.05);
-      text-align:center;
-    }
-    h1{margin:0 0 8px;font-size:22px}
-    p{margin:0 0 18px;color:#cdb7ff;font-size:14px}
-    .small{margin-top:10px;color:#cdb7ff;font-size:13px}
-    button{
-      width:100%;
-      padding:18px;
-      margin-top:14px;
-      border-radius:14px;
-      border:none;
-      font-size:16px;
-      font-weight:900;
-      cursor:pointer;
-      transition:transform .08s ease, opacity .2s;
-    }
-    button:active{transform:scale(.98)}
-    button:disabled{opacity:.55;cursor:not-allowed}
-    .start{background:linear-gradient(135deg,#2ecc71,#1e8f4f);color:#081b10}
-    .end{background:linear-gradient(135deg,#ff5f6d,#c0392b);color:#1a0000}
-    #status{margin-top:16px;font-size:13px;color:#cdb7ff;min-height:18px}
-  </style>
+<style>
+body{
+  margin:0;
+  font-family:system-ui;
+  background:#0b0214;
+  color:#f7f2ff;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+}
+.panel{
+  width:100%;
+  max-width:540px;
+  padding:18px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.15);
+  background:rgba(255,255,255,.06);
+}
+h1{margin:0 0 6px;font-size:22px}
+p{margin:0 0 14px;color:#cdb7ff;font-size:13px}
+
+label{display:block;margin:10px 0 6px;color:#cdb7ff;font-size:13px}
+input, select{
+  width:100%;
+  padding:10px;
+  border-radius:12px;
+  border:1px solid rgba(255,255,255,.15);
+  background:#0b0114;
+  color:#fff;
+}
+
+button{
+  width:100%;
+  padding:16px;
+  margin-top:12px;
+  border-radius:14px;
+  border:none;
+  cursor:pointer;
+  font-weight:900;
+  font-size:15px;
+}
+.start{background:#2ecc71;color:#081b10}
+.end{background:#e74c3c;color:#1a0000}
+button:disabled{opacity:.55;cursor:not-allowed}
+
+#status{margin-top:12px;color:#cdb7ff;font-size:13px}
+.hidden{display:none}
+</style>
 </head>
 
 <body>
-  <div class="panel">
-    <h1>Patrol Logger</h1>
-    <p>Start and end patrol with one click. Duration is calculated automatically.</p>
+<div class="panel">
+  <h1>Patrol Logger</h1>
+  <p>DCoJ patrol logging system</p>
 
-    <button class="start" id="startBtn">🟢 START PATROL</button>
-    <button class="end" id="endBtn">🔴 END PATROL</button>
+  <label>Username</label>
+  <input id="username" placeholder="Your username">
 
-    <div id="status"></div>
-    <div class="small" id="liveInfo"></div>
+  <label>DCoJ Enforcement Rank</label>
+  <select id="rank">
+    <option value="">-- Select rank --</option>
+    <option>Arbiter</option>
+    <option>Quaestor</option>
+    <option>Praetor</option>
+    <option>Sanctor</option>
+    <option>Ast. Chief Arbiter</option>
+    <option>Chief Arbiter</option>
+  </select>
+
+  <!-- SUPERVISOR (ONLY FOR ARBITER) -->
+  <div id="mentorBlock" class="hidden">
+    <label>Supervised by (Quaestor Mentor)</label>
+    <input id="mentor" placeholder="Quaestor mentor username">
   </div>
 
+  <button class="start" id="startBtn">🟢 START PATROL</button>
+  <button class="end" id="endBtn" disabled>🔴 END PATROL</button>
+
+  <div id="status"></div>
+</div>
+
 <script>
-const status = document.getElementById("status");
-const liveInfo = document.getElementById("liveInfo");
+const STORAGE = {
+  start: "patrolStartISO",
+  user: "patrolUser",
+  rank: "patrolRank",
+  mentor: "patrolMentor"
+};
+
+const usernameEl = document.getElementById("username");
+const rankEl = document.getElementById("rank");
+const mentorEl = document.getElementById("mentor");
+const mentorBlock = document.getElementById("mentorBlock");
+
 const startBtn = document.getElementById("startBtn");
 const endBtn = document.getElementById("endBtn");
+const status = document.getElementById("status");
 
-const STORAGE_KEY = "patrolStartISO";
-
-function pad2(n){ return String(n).padStart(2, "0"); }
-
-function formatDuration(ms){
-  ms = Math.max(0, ms);
-  const totalSec = Math.floor(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
-
-function formatLocal(iso){
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
-}
-
-function getStartISO(){
-  return localStorage.getItem(STORAGE_KEY);
-}
-
-function setStartISO(iso){
-  localStorage.setItem(STORAGE_KEY, iso);
-}
-
-function clearStartISO(){
-  localStorage.removeItem(STORAGE_KEY);
-}
+function get(k){return localStorage.getItem(k)}
+function set(k,v){localStorage.setItem(k,v)}
+function del(k){localStorage.removeItem(k)}
 
 function refreshUI(){
-  const startISO = getStartISO();
-  const now = new Date();
+  const rank = rankEl.value;
+  const onPatrol = !!get(STORAGE.start);
 
-  if (!startISO){
-    startBtn.disabled = false;
-    endBtn.disabled = true;
-    liveInfo.textContent = "Not currently on patrol.";
+  mentorBlock.classList.toggle("hidden", rank !== "Arbiter");
+
+  startBtn.disabled = onPatrol;
+  endBtn.disabled = !onPatrol;
+}
+
+async function send(action, extra={}){
+  const res = await fetch("/.netlify/functions/patrol", {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(extra)
+  });
+  const text = await res.text();
+  let data={}; try{data=JSON.parse(text)}catch{}
+  if(!res.ok) throw new Error(data.error || text);
+}
+
+startBtn.onclick = async () => {
+  const username = usernameEl.value.trim();
+  const rank = rankEl.value;
+  const mentor = mentorEl.value.trim();
+
+  if(!username || !rank){
+    status.textContent = "❌ Username and rank required.";
     return;
   }
 
-  // On patrol
-  startBtn.disabled = true;
-  endBtn.disabled = false;
-
-  const start = new Date(startISO);
-  const dur = formatDuration(now - start);
-  liveInfo.textContent = `On patrol since ${formatLocal(startISO)} • Duration: ${dur}`;
-}
-
-async function postToDiscord(payload){
-  const res = await fetch("/.netlify/functions/patrol", {
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body: JSON.stringify(payload)
-  });
-
-  const text = await res.text();
-  let data = {};
-  try{ data = JSON.parse(text); }catch{}
-
-  if(!res.ok){
-    throw new Error(data.error || text || `HTTP ${res.status}`);
-  }
-}
-
-async function startPatrol(){
-  // prevent double-start
-  if (getStartISO()){
-    status.textContent = "⚠️ Patrol already started.";
-    refreshUI();
+  if(rank === "Arbiter" && !mentor){
+    status.textContent = "❌ Arbiter patrols require a Quaestor mentor.";
     return;
   }
 
   const startISO = new Date().toISOString();
-  setStartISO(startISO);
+  set(STORAGE.start, startISO);
+  set(STORAGE.user, username);
+  set(STORAGE.rank, rank);
+  if(mentor) set(STORAGE.mentor, mentor);
 
-  startBtn.disabled = true;
-  endBtn.disabled = true;
-  status.textContent = "Sending START log...";
-
+  status.textContent = "Logging start...";
   try{
-    await postToDiscord({
-      action: "Start Patrol",
+    await send("Start Patrol",{
+      action:"Start Patrol",
+      username,
+      rank,
+      mentor,
       startISO,
-      time: startISO
+      time:startISO
     });
-    status.textContent = "✅ Start logged to Discord!";
+    status.textContent = "✅ Patrol started.";
+    refreshUI();
   }catch(e){
-    // if it failed, undo the start so you don't get stuck
-    clearStartISO();
-    status.textContent = "❌ " + e.message;
-  }finally{
-    refreshUI();
+    del(STORAGE.start);
+    status.textContent = "❌ "+e.message;
   }
-}
+};
 
-async function endPatrol(){
-  const startISO = getStartISO();
-  if (!startISO){
-    status.textContent = "⚠️ No patrol start found. Click START first.";
-    refreshUI();
-    return;
-  }
-
+endBtn.onclick = async () => {
   const endISO = new Date().toISOString();
-  const durationMs = new Date(endISO) - new Date(startISO);
-  const durationText = formatDuration(durationMs);
-
-  startBtn.disabled = true;
-  endBtn.disabled = true;
-  status.textContent = "Sending END log...";
-
+  status.textContent = "Logging end...";
   try{
-    await postToDiscord({
-      action: "End Patrol",
-      startISO,
+    await send("End Patrol",{
+      action:"End Patrol",
+      username:get(STORAGE.user),
+      rank:get(STORAGE.rank),
+      mentor:get(STORAGE.mentor),
+      startISO:get(STORAGE.start),
       endISO,
-      durationText,
-      durationMs,
-      time: endISO
+      time:endISO
     });
-
-    clearStartISO();
-    status.textContent = `✅ End logged! Duration: ${durationText}`;
-  }catch(e){
-    status.textContent = "❌ " + e.message;
-  }finally{
+    del(STORAGE.start); del(STORAGE.mentor);
+    status.textContent = "✅ Patrol ended.";
     refreshUI();
+  }catch(e){
+    status.textContent = "❌ "+e.message;
   }
-}
+};
 
-startBtn.onclick = startPatrol;
-endBtn.onclick = endPatrol;
-
-// refresh display every second while on patrol
+rankEl.onchange = refreshUI;
 refreshUI();
-setInterval(refreshUI, 1000);
 </script>
 </body>
 </html>
