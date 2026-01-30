@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Patrol Logger</title>
+<title>DCoJ Patrol Logger</title>
 
 <style>
 body{
@@ -19,9 +19,9 @@ body{
 }
 .panel{
   width:100%;
-  max-width:540px;
-  padding:18px;
-  border-radius:16px;
+  max-width:560px;
+  padding:20px;
+  border-radius:18px;
   border:1px solid rgba(255,255,255,.15);
   background:rgba(255,255,255,.06);
 }
@@ -29,7 +29,7 @@ h1{margin:0 0 6px;font-size:22px}
 p{margin:0 0 14px;color:#cdb7ff;font-size:13px}
 
 label{display:block;margin:10px 0 6px;color:#cdb7ff;font-size:13px}
-input, select{
+input,select,textarea{
   width:100%;
   padding:10px;
   border-radius:12px;
@@ -37,6 +37,7 @@ input, select{
   background:#0b0114;
   color:#fff;
 }
+textarea{resize:vertical;min-height:80px}
 
 button{
   width:100%;
@@ -50,17 +51,53 @@ button{
 }
 .start{background:#2ecc71;color:#081b10}
 .end{background:#e74c3c;color:#1a0000}
+.reset{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.15)}
 button:disabled{opacity:.55;cursor:not-allowed}
 
 #status{margin-top:12px;color:#cdb7ff;font-size:13px}
+#live{margin-top:8px;color:#cdb7ff;font-size:13px}
+
 .hidden{display:none}
+
+/* Modal */
+.modalBack{
+  position:fixed; inset:0;
+  background:rgba(0,0,0,.65);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+}
+.modal{
+  width:100%;
+  max-width:520px;
+  background:#11031f;
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:16px;
+  padding:16px;
+}
+.modalHead{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:10px;
+}
+.close{
+  width:34px;height:34px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.15);
+  background:rgba(255,255,255,.08);
+  color:#fff;
+  font-weight:900;
+  cursor:pointer;
+}
 </style>
 </head>
 
 <body>
 <div class="panel">
-  <h1>Patrol Logger</h1>
-  <p>DCoJ patrol logging system</p>
+  <h1>DCoJ Patrol Logger</h1>
+  <p>Start and end patrols with automatic duration and reporting.</p>
 
   <label>Username</label>
   <input id="username" placeholder="Your username">
@@ -76,7 +113,6 @@ button:disabled{opacity:.55;cursor:not-allowed}
     <option>Chief Arbiter</option>
   </select>
 
-  <!-- SUPERVISOR (ONLY FOR ARBITER) -->
   <div id="mentorBlock" class="hidden">
     <label>Supervised by (Quaestor Mentor)</label>
     <input id="mentor" placeholder="Quaestor mentor username">
@@ -84,114 +120,142 @@ button:disabled{opacity:.55;cursor:not-allowed}
 
   <button class="start" id="startBtn">🟢 START PATROL</button>
   <button class="end" id="endBtn" disabled>🔴 END PATROL</button>
+  <button class="reset" id="resetBtn">Reset</button>
 
   <div id="status"></div>
+  <div id="live"></div>
+</div>
+
+<!-- END PATROL MODAL -->
+<div class="modalBack" id="endModal">
+  <div class="modal">
+    <div class="modalHead">
+      <b>End Patrol Details</b>
+      <button class="close" id="closeModal">✕</button>
+    </div>
+
+    <label>Number of arrests</label>
+    <input id="arrests" type="number" min="0" placeholder="0">
+
+    <label>Attendees (comma or new line separated)</label>
+    <textarea id="attendees"></textarea>
+
+    <button class="end" id="submitEnd">Submit End Patrol</button>
+  </div>
 </div>
 
 <script>
-const STORAGE = {
-  start: "patrolStartISO",
-  user: "patrolUser",
-  rank: "patrolRank",
-  mentor: "patrolMentor"
+const S={
+  start:"patrolStart",
+  user:"patrolUser",
+  rank:"patrolRank",
+  mentor:"patrolMentor"
 };
 
-const usernameEl = document.getElementById("username");
-const rankEl = document.getElementById("rank");
-const mentorEl = document.getElementById("mentor");
-const mentorBlock = document.getElementById("mentorBlock");
+const $=id=>document.getElementById(id);
 
-const startBtn = document.getElementById("startBtn");
-const endBtn = document.getElementById("endBtn");
-const status = document.getElementById("status");
-
-function get(k){return localStorage.getItem(k)}
-function set(k,v){localStorage.setItem(k,v)}
+function save(k,v){localStorage.setItem(k,v)}
+function load(k){return localStorage.getItem(k)}
 function del(k){localStorage.removeItem(k)}
 
-function refreshUI(){
-  const rank = rankEl.value;
-  const onPatrol = !!get(STORAGE.start);
-
-  mentorBlock.classList.toggle("hidden", rank !== "Arbiter");
-
-  startBtn.disabled = onPatrol;
-  endBtn.disabled = !onPatrol;
+function fmt(ms){
+  const s=Math.floor(ms/1000);
+  const h=Math.floor(s/3600);
+  const m=Math.floor((s%3600)/60);
+  const r=s%60;
+  if(h) return `${h}h ${m}m ${r}s`;
+  if(m) return `${m}m ${r}s`;
+  return `${r}s`;
 }
 
-async function send(action, extra={}){
-  const res = await fetch("/.netlify/functions/patrol", {
+function refresh(){
+  $("mentorBlock").classList.toggle("hidden",$("rank").value!=="Arbiter");
+
+  const on=!!load(S.start);
+  $("startBtn").disabled=on;
+  $("endBtn").disabled=!on;
+
+  if(on){
+    const d=Date.now()-new Date(load(S.start));
+    $("live").textContent=`On patrol • Duration: ${fmt(d)}`;
+  }else{
+    $("live").textContent="Not on patrol.";
+  }
+}
+
+async function send(data){
+  const r=await fetch("/.netlify/functions/patrol",{
     method:"POST",
     headers:{"Content-Type":"application/json"},
-    body:JSON.stringify(extra)
+    body:JSON.stringify(data)
   });
-  const text = await res.text();
-  let data={}; try{data=JSON.parse(text)}catch{}
-  if(!res.ok) throw new Error(data.error || text);
+  if(!r.ok) throw new Error(await r.text());
 }
 
-startBtn.onclick = async () => {
-  const username = usernameEl.value.trim();
-  const rank = rankEl.value;
-  const mentor = mentorEl.value.trim();
+$("startBtn").onclick=async()=>{
+  const u=$("username").value.trim();
+  const r=$("rank").value;
+  const m=$("mentor").value.trim();
 
-  if(!username || !rank){
-    status.textContent = "❌ Username and rank required.";
-    return;
-  }
+  if(!u||!r){$("status").textContent="❌ Username and rank required.";return;}
+  if(r==="Arbiter"&&!m){$("status").textContent="❌ Arbiter requires Quaestor mentor.";return;}
 
-  if(rank === "Arbiter" && !mentor){
-    status.textContent = "❌ Arbiter patrols require a Quaestor mentor.";
-    return;
-  }
+  const t=new Date().toISOString();
+  save(S.start,t); save(S.user,u); save(S.rank,r); if(m) save(S.mentor,m);
 
-  const startISO = new Date().toISOString();
-  set(STORAGE.start, startISO);
-  set(STORAGE.user, username);
-  set(STORAGE.rank, rank);
-  if(mentor) set(STORAGE.mentor, mentor);
-
-  status.textContent = "Logging start...";
+  $("status").textContent="Logging start...";
   try{
-    await send("Start Patrol",{
-      action:"Start Patrol",
-      username,
-      rank,
-      mentor,
-      startISO,
-      time:startISO
-    });
-    status.textContent = "✅ Patrol started.";
-    refreshUI();
+    await send({action:"Start Patrol",username:u,rank:r,mentor:m,startISO:t,time:t});
+    $("status").textContent="✅ Patrol started.";
   }catch(e){
-    del(STORAGE.start);
-    status.textContent = "❌ "+e.message;
+    del(S.start);
+    $("status").textContent="❌ Failed.";
   }
+  refresh();
 };
 
-endBtn.onclick = async () => {
-  const endISO = new Date().toISOString();
-  status.textContent = "Logging end...";
+$("endBtn").onclick=()=>{
+  $("endModal").style.display="flex";
+  $("arrests").value="";
+  $("attendees").value="";
+};
+
+$("closeModal").onclick=()=>$("endModal").style.display="none";
+
+$("submitEnd").onclick=async()=>{
+  const end=new Date().toISOString();
+  const start=load(S.start);
+  const arrests=$("arrests").value||"0";
+  const attendees=[...new Set($("attendees").value.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean))];
+
+  $("status").textContent="Logging end...";
   try{
-    await send("End Patrol",{
+    await send({
       action:"End Patrol",
-      username:get(STORAGE.user),
-      rank:get(STORAGE.rank),
-      mentor:get(STORAGE.mentor),
-      startISO:get(STORAGE.start),
-      endISO,
-      time:endISO
+      username:load(S.user),
+      rank:load(S.rank),
+      mentor:load(S.mentor),
+      startISO:start,
+      endISO:end,
+      durationText:fmt(new Date(end)-new Date(start)),
+      arrests,
+      attendees,
+      time:end
     });
-    del(STORAGE.start); del(STORAGE.mentor);
-    status.textContent = "✅ Patrol ended.";
-    refreshUI();
-  }catch(e){
-    status.textContent = "❌ "+e.message;
+    del(S.start);
+    $("status").textContent="✅ Patrol ended.";
+    $("endModal").style.display="none";
+  }catch{
+    $("status").textContent="❌ Failed.";
   }
+  refresh();
 };
 
-rankEl.onchange = refreshUI;
-refreshUI();
+$("resetBtn").onclick=()=>{Object.values(S).forEach(del);refresh();};
+
+$("rank").onchange=refresh;
+refresh();
+setInterval(refresh,1000);
 </script>
 </body>
 </html>
