@@ -3,63 +3,96 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Start Patrol</title>
+  <title>Patrol Control</title>
+
   <style>
     body{
+      margin:0;
       font-family:system-ui;
       background:#0b0214;
       color:#f7f2ff;
-      padding:40px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      height:100vh;
     }
-    .card{
-      max-width:460px;
-      margin:auto;
-      padding:18px;
-      border-radius:14px;
+    .panel{
+      width:100%;
+      max-width:420px;
+      padding:24px;
+      border-radius:18px;
       border:1px solid rgba(255,255,255,.15);
       background:rgba(255,255,255,.05);
+      text-align:center;
     }
-    h2{margin:0 0 8px}
-    .small{color:#cdb7ff;font-size:13px;margin:0 0 12px}
+    h1{
+      margin:0 0 8px;
+      font-size:22px;
+    }
+    p{
+      margin:0 0 18px;
+      color:#cdb7ff;
+      font-size:14px;
+    }
     button{
       width:100%;
-      padding:14px;
-      border-radius:12px;
-      border:1px solid rgba(255,255,255,.2);
-      background:#3a1b6d;
-      color:#fff;
+      padding:18px;
+      margin-top:14px;
+      border-radius:14px;
+      border:none;
+      font-size:16px;
       font-weight:900;
       cursor:pointer;
-      font-size:15px;
+      transition:transform .08s ease, opacity .2s;
     }
+    button:active{transform:scale(.98)}
     button:disabled{opacity:.6;cursor:not-allowed}
-    #status{margin-top:12px;color:#cdb7ff;font-size:13px}
+
+    .start{
+      background:linear-gradient(135deg,#2ecc71,#1e8f4f);
+      color:#081b10;
+    }
+    .end{
+      background:linear-gradient(135deg,#ff5f6d,#c0392b);
+      color:#1a0000;
+    }
+
+    #status{
+      margin-top:16px;
+      font-size:13px;
+      color:#cdb7ff;
+      min-height:18px;
+    }
   </style>
 </head>
 
 <body>
-  <div class="card">
-    <h2>Patrol Logger</h2>
-    <p class="small">Click the button to start your patrol log in Discord.</p>
+  <div class="panel">
+    <h1>Patrol Logger</h1>
+    <p>Click a button to log patrol status to Discord</p>
 
-    <button id="startBtn">Start Patrol</button>
+    <button class="start" id="startBtn">🟢 START PATROL</button>
+    <button class="end" id="endBtn">🔴 END PATROL</button>
+
     <div id="status"></div>
   </div>
 
 <script>
-const btn = document.getElementById("startBtn");
 const status = document.getElementById("status");
+const startBtn = document.getElementById("startBtn");
+const endBtn = document.getElementById("endBtn");
 
-btn.addEventListener("click", async () => {
-  btn.disabled = true;
-  status.textContent = "Sending...";
+async function send(action){
+  startBtn.disabled = true;
+  endBtn.disabled = true;
+  status.textContent = "Sending to Discord...";
 
   try{
     const res = await fetch("/.netlify/functions/patrol", {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
+      method:"POST",
+      headers:{ "Content-Type":"application/json" },
       body: JSON.stringify({
-        action: "Start Patrol",
+        action,
         time: new Date().toISOString()
       })
     });
@@ -68,15 +101,21 @@ btn.addEventListener("click", async () => {
     let data = {};
     try{ data = JSON.parse(text); }catch{}
 
-    if(!res.ok) throw new Error(data.error || text || `HTTP ${res.status}`);
+    if(!res.ok){
+      throw new Error(data.error || text || `HTTP ${res.status}`);
+    }
 
-    status.textContent = "✅ Patrol started (logged to Discord)!";
+    status.textContent = `✅ ${action} logged`;
   }catch(e){
     status.textContent = "❌ " + e.message;
   }finally{
-    btn.disabled = false;
+    startBtn.disabled = false;
+    endBtn.disabled = false;
   }
-});
+}
+
+startBtn.onclick = () => send("Start Patrol");
+endBtn.onclick   = () => send("End Patrol");
 </script>
 </body>
 </html>
