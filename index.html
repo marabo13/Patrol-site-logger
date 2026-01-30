@@ -18,22 +18,16 @@
     }
     .panel{
       width:100%;
-      max-width:420px;
+      max-width:440px;
       padding:24px;
       border-radius:18px;
       border:1px solid rgba(255,255,255,.15);
       background:rgba(255,255,255,.05);
       text-align:center;
     }
-    h1{
-      margin:0 0 8px;
-      font-size:22px;
-    }
-    p{
-      margin:0 0 18px;
-      color:#cdb7ff;
-      font-size:14px;
-    }
+    h1{margin:0 0 8px;font-size:22px}
+    p{margin:0 0 18px;color:#cdb7ff;font-size:14px}
+    .small{margin-top:10px;color:#cdb7ff;font-size:13px}
     button{
       width:100%;
       padding:18px;
@@ -46,76 +40,172 @@
       transition:transform .08s ease, opacity .2s;
     }
     button:active{transform:scale(.98)}
-    button:disabled{opacity:.6;cursor:not-allowed}
-
-    .start{
-      background:linear-gradient(135deg,#2ecc71,#1e8f4f);
-      color:#081b10;
-    }
-    .end{
-      background:linear-gradient(135deg,#ff5f6d,#c0392b);
-      color:#1a0000;
-    }
-
-    #status{
-      margin-top:16px;
-      font-size:13px;
-      color:#cdb7ff;
-      min-height:18px;
-    }
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .start{background:linear-gradient(135deg,#2ecc71,#1e8f4f);color:#081b10}
+    .end{background:linear-gradient(135deg,#ff5f6d,#c0392b);color:#1a0000}
+    #status{margin-top:16px;font-size:13px;color:#cdb7ff;min-height:18px}
   </style>
 </head>
 
 <body>
   <div class="panel">
     <h1>Patrol Logger</h1>
-    <p>Click a button to log patrol status to Discord</p>
+    <p>Start and end patrol with one click. Duration is calculated automatically.</p>
 
     <button class="start" id="startBtn">🟢 START PATROL</button>
     <button class="end" id="endBtn">🔴 END PATROL</button>
 
     <div id="status"></div>
+    <div class="small" id="liveInfo"></div>
   </div>
 
 <script>
 const status = document.getElementById("status");
+const liveInfo = document.getElementById("liveInfo");
 const startBtn = document.getElementById("startBtn");
 const endBtn = document.getElementById("endBtn");
 
-async function send(action){
-  startBtn.disabled = true;
-  endBtn.disabled = true;
-  status.textContent = "Sending to Discord...";
+const STORAGE_KEY = "patrolStartISO";
 
-  try{
-    const res = await fetch("/.netlify/functions/patrol", {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({
-        action,
-        time: new Date().toISOString()
-      })
-    });
+function pad2(n){ return String(n).padStart(2, "0"); }
 
-    const text = await res.text();
-    let data = {};
-    try{ data = JSON.parse(text); }catch{}
+function formatDuration(ms){
+  ms = Math.max(0, ms);
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
 
-    if(!res.ok){
-      throw new Error(data.error || text || `HTTP ${res.status}`);
-    }
+function formatLocal(iso){
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+}
 
-    status.textContent = `✅ ${action} logged`;
-  }catch(e){
-    status.textContent = "❌ " + e.message;
-  }finally{
+function getStartISO(){
+  return localStorage.getItem(STORAGE_KEY);
+}
+
+function setStartISO(iso){
+  localStorage.setItem(STORAGE_KEY, iso);
+}
+
+function clearStartISO(){
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+function refreshUI(){
+  const startISO = getStartISO();
+  const now = new Date();
+
+  if (!startISO){
     startBtn.disabled = false;
-    endBtn.disabled = false;
+    endBtn.disabled = true;
+    liveInfo.textContent = "Not currently on patrol.";
+    return;
+  }
+
+  // On patrol
+  startBtn.disabled = true;
+  endBtn.disabled = false;
+
+  const start = new Date(startISO);
+  const dur = formatDuration(now - start);
+  liveInfo.textContent = `On patrol since ${formatLocal(startISO)} • Duration: ${dur}`;
+}
+
+async function postToDiscord(payload){
+  const res = await fetch("/.netlify/functions/patrol", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const text = await res.text();
+  let data = {};
+  try{ data = JSON.parse(text); }catch{}
+
+  if(!res.ok){
+    throw new Error(data.error || text || `HTTP ${res.status}`);
   }
 }
 
-startBtn.onclick = () => send("Start Patrol");
-endBtn.onclick   = () => send("End Patrol");
+async function startPatrol(){
+  // prevent double-start
+  if (getStartISO()){
+    status.textContent = "⚠️ Patrol already started.";
+    refreshUI();
+    return;
+  }
+
+  const startISO = new Date().toISOString();
+  setStartISO(startISO);
+
+  startBtn.disabled = true;
+  endBtn.disabled = true;
+  status.textContent = "Sending START log...";
+
+  try{
+    await postToDiscord({
+      action: "Start Patrol",
+      startISO,
+      time: startISO
+    });
+    status.textContent = "✅ Start logged to Discord!";
+  }catch(e){
+    // if it failed, undo the start so you don't get stuck
+    clearStartISO();
+    status.textContent = "❌ " + e.message;
+  }finally{
+    refreshUI();
+  }
+}
+
+async function endPatrol(){
+  const startISO = getStartISO();
+  if (!startISO){
+    status.textContent = "⚠️ No patrol start found. Click START first.";
+    refreshUI();
+    return;
+  }
+
+  const endISO = new Date().toISOString();
+  const durationMs = new Date(endISO) - new Date(startISO);
+  const durationText = formatDuration(durationMs);
+
+  startBtn.disabled = true;
+  endBtn.disabled = true;
+  status.textContent = "Sending END log...";
+
+  try{
+    await postToDiscord({
+      action: "End Patrol",
+      startISO,
+      endISO,
+      durationText,
+      durationMs,
+      time: endISO
+    });
+
+    clearStartISO();
+    status.textContent = `✅ End logged! Duration: ${durationText}`;
+  }catch(e){
+    status.textContent = "❌ " + e.message;
+  }finally{
+    refreshUI();
+  }
+}
+
+startBtn.onclick = startPatrol;
+endBtn.onclick = endPatrol;
+
+// refresh display every second while on patrol
+refreshUI();
+setInterval(refreshUI, 1000);
 </script>
 </body>
 </html>
