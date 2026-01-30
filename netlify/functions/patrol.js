@@ -11,12 +11,12 @@ exports.handler = async (event) => {
   let body = {};
   try { body = JSON.parse(event.body || "{}"); } catch {}
 
-  const action = String(body.action || "Start Patrol");
+  const action = String(body.action || "Patrol");
   const time = String(body.time || new Date().toISOString());
 
   const content =
-`🛡️ **Patrol Log**
-✅ **${action}**
+`🛡️ **PATROL LOG**
+${action === "Start Patrol" ? "🟢" : "🔴"} **${action.toUpperCase()}**
 🕒 **Time:** ${time}`;
 
   const resp = await fetch(WEBHOOK_URL, {
