@@ -138,7 +138,7 @@ button:disabled{opacity:.55;cursor:not-allowed}
     <input id="arrests" type="number" min="0" placeholder="0">
 
     <label>Attendees (comma or new line separated)</label>
-    <textarea id="attendees"></textarea>
+    <textarea id="attendees" placeholder="Name1, Name2 OR one per line"></textarea>
 
     <button class="end" id="submitEnd">Submit End Patrol</button>
   </div>
@@ -189,7 +189,8 @@ async function send(data){
     headers:{"Content-Type":"application/json"},
     body:JSON.stringify(data)
   });
-  if(!r.ok) throw new Error(await r.text());
+  const text = await r.text();
+  if(!r.ok) throw new Error(text);
 }
 
 $("startBtn").onclick=async()=>{
@@ -209,7 +210,7 @@ $("startBtn").onclick=async()=>{
     $("status").textContent="✅ Patrol started.";
   }catch(e){
     del(S.start);
-    $("status").textContent="❌ Failed.";
+    $("status").textContent="❌ " + e.message;
   }
   refresh();
 };
@@ -225,8 +226,13 @@ $("closeModal").onclick=()=>$("endModal").style.display="none";
 $("submitEnd").onclick=async()=>{
   const end=new Date().toISOString();
   const start=load(S.start);
+
   const arrests=$("arrests").value||"0";
-  const attendees=[...new Set($("attendees").value.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean))];
+
+  // ✅ attendees array (unique)
+  const attendees=[...new Set(
+    $("attendees").value.split(/[\n,]+/).map(x=>x.trim()).filter(Boolean)
+  )];
 
   $("status").textContent="Logging end...";
   try{
@@ -234,7 +240,7 @@ $("submitEnd").onclick=async()=>{
       action:"End Patrol",
       username:load(S.user),
       rank:load(S.rank),
-      mentor:load(S.mentor),
+      mentor:load(S.mentor) || "",
       startISO:start,
       endISO:end,
       durationText:fmt(new Date(end)-new Date(start)),
@@ -245,8 +251,8 @@ $("submitEnd").onclick=async()=>{
     del(S.start);
     $("status").textContent="✅ Patrol ended.";
     $("endModal").style.display="none";
-  }catch{
-    $("status").textContent="❌ Failed.";
+  }catch(e){
+    $("status").textContent="❌ " + e.message;
   }
   refresh();
 };
